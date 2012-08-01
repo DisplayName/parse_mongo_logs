@@ -1,0 +1,13 @@
+{application, parse_mongo_logs,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {modules, [parse_mongo_logs_app, parse_mongo_logs_sup, log_parser]},
+  {registered, [parse_mongo_logs_app, parse_mongo_logs_sup, log_parser]},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { parse_mongo_logs_app, []}},
+  {env, []}
+ ]}.
