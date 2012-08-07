@@ -1,6 +1,12 @@
 -module(test).
--export([conn/0, foo/1, bar/0]).
+-export([conn/0, foo/1, bar/0, q/0, q1/1]).
 -include("deps/mongodb/include/mongo_protocol.hrl").
+
+
+-compile([{parse_transform, lager_transform}]).
+
+
+-include("logging.hrl").
 
 
 -record(rec, {x=1, y}).
@@ -37,3 +43,11 @@ bar() ->
 
    % R = #mongo_options(host=
    io:format("~p~n~n", [R]).
+
+
+
+q() ->
+  lager:error("oh no!").
+
+q1(Text) ->
+  ?log_debug("~p~n", [Text]).

@@ -4,50 +4,48 @@
 
 
 foo() ->
-	{ok, Device} = file:open("/home/svart_ravn/work/projects/trash/parse_mongo_logs/data/test", [read]),
+	% {ok, Device} = file:open("/home/svart_ravn/work/projects/trash/parse_mongo_logs/data/test", [read]),
+   {ok, Device} = file:open("/home/svart_ravn/work/projects/trash/parse_mongo_logs/src/test", [read]),
 
-	get_data_from_file(Device, "", 0),
+   Res = read_file_line_by_line(Device, ""),
 
-	file:close(Device).
+	file:close(Device),
+
+   Res.
 
 
+read_file_line_by_line(Device, Accum) ->
+   case io:get_line(Device, "") of
+      eof -> Accum;
+      Line -> 
+         {Bin, UnhandledData} = try_to_get_binary(Accum ++ Line, string:chr(Line, $.)),
+         insert_message(Bin),
+         read_file_line_by_line(Device, UnhandledData)
+   end.
+
+remove_chars(Text) ->
+   lists:filter(fun(C) -> not lists:member(C, "$ $\n") end, Text).
 
 
-get_data_from_file(Device, Accum, Position) ->
-   case file:read(Device, 200) of
-      eof -> file:close(Device), Accum;
-      {_, Data} -> 
-         AllData = Accum ++ Data,
-         DotPosition = string:chr(Data, $.),
-         if (DotPosition > 0) ->
-            
-            RawMessage = string:substr(AllData, 1, DotPosition - 1),
+try_to_get_binary(Text, 0) -> {[], Text};
+try_to_get_binary(Text, _Position) ->
+   Position = string:chr(Text, $.),
+   Result = remove_chars(string:substr(Text, Position + 1, length(Text) - Position)),
+   StringToParse = remove_chars(string:substr(Text, 1, Position)),
 
-            % DotPos = string:chr(AllData, $.),
-            % RawMessage = string:substr(AllData, 1, DotPos - 1),
-            % StartPos = string:chr(RawMessage, $<),
-            % EndPos = string:chr(RawMessage, $>),
+   {ok, Tokens, _EndLine} = erl_scan:string(StringToParse),
+   {ok, Terms} = erl_parse:parse_term(Tokens),
+   {Binary, _Trash} = Terms,
+   % ActualTerm = ,
 
-            % Message = replaceUselessChars(string:substr(RawMessage, StartPos, EndPos - StartPos + 2)),
-            % Message = RawMessage,
+   % insert_message(ActualTerm),
 
-            % {ok, T, _} = erl_scan:string(Message ++ "."),
-            % {ok, Binary} = erl_parse:parse_term(T),     
-            % Term = binary_to_term(Binary),
-            % TaskType = element(1, Term),
-            
-            if (true) ->
-               % insert_message(MongoOpts, Connection, ?UNFIRED, Term);
-               io:format("~p~n~n~n", [RawMessage]);
-            true ->
-               io:format("failed to unpack", [])
-               % insert_message(MongoOpts, Connection, ?FIRED, Binary)
-            end,
-            
-            RestOfData = string:substr(AllData, DotPosition + 1, string:len(AllData) - DotPosition);
-         true ->
-            RestOfData = AllData
-         end,
-                     
-         get_data_from_file(Device, RestOfData, Position + 200)
-   end.	
+   {binary_to_term(Binary), Result}.
+
+insert_message([]) -> ok;
+insert_message({task, _RecipCnt, Msisdns, TranSid, _Tag, _Error}) -> io:format("-", []);
+insert_message(D = {Message, UnpackedMessage}) -> io:format("~p~n+", [D]).
+
+
+message(Text) ->
+   io:format("~p~n", [Text]).
