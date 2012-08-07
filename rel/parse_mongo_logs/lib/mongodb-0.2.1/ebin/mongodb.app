@@ -1,4 +1,4 @@
-%% app generated at {2012,8,1} {15,24,12}
+%% app generated at {2012,8,7} {17,11,49}
 {application,mongodb,
              [{description,"Client interface to MongoDB, also known as the driver. See www.mongodb.org"},
               {vsn,"0.2.1"},

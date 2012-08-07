@@ -1,4 +1,4 @@
-%% app generated at {2012,8,1} {15,24,12}
+%% app generated at {2012,8,7} {17,11,49}
 {application,bson,
              [{description,"BSON are JSON-like objects with a standard binary serialization. See bsonspec.org."},
               {vsn,"0"},

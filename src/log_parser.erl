@@ -1,10 +1,16 @@
 -module(log_parser).
 -behaviour(gen_server).
+-compile([{parse_transform, lager_transform}]).
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -export([parse/1]).
+-export([do/0]).
+
+
+
+-include("logging.hrl").
 
 
 -record(state, 
@@ -12,10 +18,12 @@
            connection, 
            db, 
            collection, 
-           file_for_rejected_data, 
-           unfired_message_counts, 
-           fired_message_counts}).
+           file_for_rejected_data
+          }).
 
+
+do() ->
+  parse("/home/svart_ravn/work/projects/trash/parse_mongo_logs/src/test").
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -30,27 +38,31 @@ init([]) ->
 	{ok, MongoCollection} = application:get_env(parse_mongo_logs, collection),
 	{ok, FileForRejectedData} = application:get_env(parse_mongo_logs, file_for_rejected_data),
 
-	{ok, Connection} = mongo:connect(MongoServer),
-
-	{ok, #state{server = MongoServer, connection = Connection, db = MongoDb, 
-					collection = MongoCollection, file_for_rejected_data = FileForRejectedData, fired_message_counts = 0, unfired_message_counts = 0}}.
+  case mongo:connect(MongoServer) of
+    {ok, Connection} ->
+    	{ok, #state{server = MongoServer, connection = Connection, db = MongoDb, 
+    					collection = MongoCollection, file_for_rejected_data = FileForRejectedData}};
+    {error, Reason} ->
+      ?log_error("Error Occured. Reason:~p. Connection settings: ~p~n", [Reason, MongoServer])
+  end.
 
 
 %
 % handling "parse" message.
 %
 handle_cast({parse, LogFileName}, State) ->
-  log_message("parsing started"),
+  ?log_info("parsing started", []),
 
   case file:open(LogFileName, [read]) of
     {ok, Device} ->
       save_into_file(State#state.file_for_rejected_data, ""),
       parse_logfile_line_by_line(Device, "", State),
-      log_message("parsing ended"),
+      ?log_info("parsing ended", []),
       file:close(Device),
 
       {noreply, State};
     {error, Reason} -> 
+      ?log_error("Can't access file: ~p~n", [LogFileName]),
       {stop, Reason, State}
   end;
 
@@ -86,8 +98,8 @@ parse_logfile_line_by_line(Device, Accum, State) ->
       eof -> Accum;
       Line -> 
          {Term, UnhandledData} = try_to_get_term(Accum ++ Line, string:chr(Line, $.)),
-         reinsert_message(State, Term),
-         parse_logfile_line_by_line(Device, UnhandledData, State)
+         NewState = reinsert_message(State, Term),
+         parse_logfile_line_by_line(Device, UnhandledData, NewState)
    end.
 
 
@@ -130,7 +142,7 @@ remove_spaces_and_brakes(Text) ->
 %
 % re-insert data in MongoDB or in file (depending it was fired or not)
 %
-reinsert_message(_State, []) -> ok;
+reinsert_message(_State, nothing) -> ok;
 
 reinsert_message(_State = #state{connection = Connection, db = Db, collection = Collection}, 
                 _Data = {task, _RecipCnt, Msisdns, TranSid, _Tag, _Error}) ->
@@ -237,5 +249,5 @@ reinsert_message(_State = #state{file_for_rejected_data = FileForRejectedData}, 
 %   end.
 
 
-log_message(Message) ->
-  io:format("~p~n", [Message]).
+% log_message(Message) ->
+%   io:format("~p~n", [Message]).
