@@ -1,13 +1,10 @@
 -module(log_parser).
 -behaviour(gen_server).
--compile([{parse_transform, lager_transform}]).
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -export([parse/1]).
--export([do/0]).
-
 
 
 -include("logging.hrl").
@@ -22,34 +19,36 @@
           }).
 
 
-do() ->
-  parse("/home/svart_ravn/work/projects/trash/parse_mongo_logs/src/test").
 
+%% ===================================================================
+%% APIs
+%% ===================================================================
 start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+  gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
-%
-% init
-%
+parse(LogFileName) ->
+  gen_server:cast(?MODULE, {parse, LogFileName}).
+
+
+%% ===================================================================
+%% gen_server callbacks
+%% ===================================================================
 init([]) ->
-	{ok, MongoServer} = application:get_env(parse_mongo_logs, mongo_server),
-	{ok, MongoDb} = application:get_env(parse_mongo_logs, mongodb_dbname),
-	{ok, MongoCollection} = application:get_env(parse_mongo_logs, collection),
-	{ok, FileForRejectedData} = application:get_env(parse_mongo_logs, file_for_rejected_data),
+  {ok, MongoServer} = application:get_env(parse_mongo_logs, mongo_server),
+  {ok, MongoDb} = application:get_env(parse_mongo_logs, mongodb_dbname),
+  {ok, MongoCollection} = application:get_env(parse_mongo_logs, collection),
+  {ok, FileForRejectedData} = application:get_env(parse_mongo_logs, file_for_rejected_data),
 
   case mongo:connect(MongoServer) of
     {ok, Connection} ->
-    	{ok, #state{server = MongoServer, connection = Connection, db = MongoDb, 
-    					collection = MongoCollection, file_for_rejected_data = FileForRejectedData}};
+      {ok, #state{server = MongoServer, connection = Connection, db = MongoDb, 
+              collection = MongoCollection, file_for_rejected_data = FileForRejectedData}};
     {error, Reason} ->
       ?log_error("Error Occured. Reason:~p. Connection settings: ~p~n", [Reason, MongoServer])
   end.
 
 
-%
-% handling "parse" message.
-%
 handle_cast({parse, LogFileName}, State) ->
   ?log_info("parsing started", []),
 
@@ -69,27 +68,27 @@ handle_cast({parse, LogFileName}, State) ->
 handle_cast(Request, State) ->
 	{stop, {bad_arg, Request}, State}.
 	
+
 handle_info(Info, State) ->
 	{stop, {bad_arg, Info}, State}.
+
 
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
-terminate(_Reason, _State = #state{server = _Server, connection = Connection}) ->
-  mongo:disconnect(Connection),
+
+terminate(_Reason, _State) ->
 	ok.
+
 
 code_change(_OldSvn, State, _Extra) ->
 	{ok, State}.
 
 
-%
-% sending message
-%
-parse(LogFileName) ->
-  gen_server:cast(?MODULE, {parse, LogFileName}).
 
-
+%% ===================================================================
+%% Internal
+%% ===================================================================
 %
 % extracting messages from log file
 %
@@ -98,8 +97,8 @@ parse_logfile_line_by_line(Device, Accum, State) ->
       eof -> Accum;
       Line -> 
          {Term, UnhandledData} = try_to_get_term(Accum ++ Line, string:chr(Line, $.)),
-         NewState = reinsert_message(State, Term),
-         parse_logfile_line_by_line(Device, UnhandledData, NewState)
+         reinsert_message(State, Term),
+         parse_logfile_line_by_line(Device, UnhandledData, State)
    end.
 
 
@@ -123,7 +122,7 @@ try_to_get_term(Text, _Position) ->
 
 %
 % saving data into file.
-% when "" passed it should clense file
+% when "" passed file should be cleansed
 %
 save_into_file(FileName, "") -> 
   file:write_file(FileName, "", []);
@@ -154,100 +153,3 @@ reinsert_message(_State = #state{connection = Connection, db = Db, collection = 
 
 reinsert_message(_State = #state{file_for_rejected_data = FileForRejectedData}, Data = {_Message, _UnpackedMessage}) ->  
   save_into_file(FileForRejectedData, Data).
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-% %
-% % extracting messages from log file
-% %
-% parse_logfile(Device, Accum, Position, State) ->
-%    case file:read(Device, 200) of
-%       eof -> file:close(Device), Accum;
-%       {_, Data} -> 
-%          AllData = Accum ++ Data,
-%          DotPosition = string:chr(Data, $.),
-
-%          if (DotPosition > 0) ->  % TBD: make it case
-%             DotPos = string:chr(AllData, $.),
-
-%             Message = extract_unpacked_message(AllData),
-
-%             {ok, T, _} = erl_scan:string(Message ++ "."),
-%             {ok, Binary} = erl_parse:parse_term(T),     
-%             Term = binary_to_term(Binary),
-
-%             insert_message(State, Term),
-            
-%             RestOfData = string:substr(AllData, DotPos + 1, string:len(AllData) - DotPos);
-%          true ->
-%             RestOfData = AllData
-%          end,
-         
-%          show_progress(Position),
-            
-%          parse_logfile(Device, RestOfData, Position + 200, State)
-%    end.
-
-
-
-% %
-% % replace spaces and carriage returns with ""
-% %
-% replace_spaces_and_returns(String) ->
-%   lists:filter(fun(C) -> not lists:member(C, "$ $\n") end, String).
-
-
-% %
-% % "{<<TEXT>>, {SOMETHING}}. --> "<<TEXT>>"
-% %
-% extract_unpacked_message(Data) ->
-%   DotPos = string:chr(Data, $.),
-%   RawMessage = string:substr(Data, 1, DotPos - 1),
-%   StartPos = string:chr(RawMessage, $<),
-%   EndPos = string:chr(RawMessage, $>),
-
-%   replace_spaces_and_returns(string:substr(RawMessage, StartPos, EndPos - StartPos + 2)).
-
-
-% %
-% % show progress in console (Mb of raw text)
-% % can be deprecated and removed
-% %
-% show_progress(AmountOfRawDataParsed) ->
-%   Progress = AmountOfRawDataParsed rem (1000 * 1000),
-%   if (Progress == 0) ->
-%      io:format("~.2fM of raw data processed~n", [AmountOfRawDataParsed / 1024 / 1024]);
-%   true ->
-%      true
-%   end.
-
-
-% log_message(Message) ->
-%   io:format("~p~n", [Message]).

@@ -10,9 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-	io:format("starting: ~p~n", [?MODULE]),
-	application:start(mongodb),
-
+	% application:start(mongodb),
    parse_mongo_logs_sup:start_link().
 
 stop(_State) ->
