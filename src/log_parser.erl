@@ -3,8 +3,7 @@
 
 -export([
         start_link/0,
-        parse/1,
-        do/0
+        parse/1
 ]).
 
 -export([
@@ -40,8 +39,6 @@ start_link() ->
 parse(LogFileName) ->
    gen_server:cast(?MODULE, {parse, LogFileName}).
 
-do() ->
-   log_parser:parse("/home/svart_ravn/work/projects/erlang/abc_data/test").
 
 
 %% ===================================================================
