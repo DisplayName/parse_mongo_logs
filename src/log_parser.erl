@@ -3,15 +3,16 @@
 
 -export([
         start_link/0,
-        parse/1
+        parse/1,
+        do/0
 ]).
 
 -export([
-        init/1, 
-        handle_call/3, 
-        handle_cast/2, 
-        handle_info/2, 
-        terminate/2, 
+        init/1,
+        handle_call/3,
+        handle_cast/2,
+        handle_info/2,
+        terminate/2,
         code_change/3
 ]).
 
@@ -21,9 +22,9 @@
 
 -record(state, {
           server,
-          connection, 
-          db, 
-          collection, 
+          connection,
+          db,
+          collection,
           file_for_rejected_data
 }).
 
@@ -39,6 +40,9 @@ start_link() ->
 parse(LogFileName) ->
    gen_server:cast(?MODULE, {parse, LogFileName}).
 
+do() ->
+   log_parser:parse("/home/svart_ravn/work/projects/erlang/abc_data/test").
+
 
 %% ===================================================================
 %% gen_server callbacks
@@ -51,7 +55,7 @@ init([]) ->
 
    case mongo:connect(MongoServer) of
       {ok, Connection} ->
-      {ok, #state{server = MongoServer, connection = Connection, db = MongoDb, 
+      {ok, #state{server = MongoServer, connection = Connection, db = MongoDb,
            collection = MongoCollection, file_for_rejected_data = FileForRejectedData}};
       {error, Reason} ->
          ?log_error("Error Occured. Reason:~p. Connection settings: ~p~n", [Reason, MongoServer])
@@ -63,13 +67,13 @@ handle_cast({parse, LogFileName}, State) ->
 
    case file:open(LogFileName, [read]) of
       {ok, Device} ->
-         save_into_file(State#state.file_for_rejected_data, ""),
+         init_storage_file(State#state.file_for_rejected_data),
          parse_logfile_line_by_line(Device, "", State),
          ?log_info("parsing ended", []),
          file:close(Device),
 
          {noreply, State};
-      {error, Reason} -> 
+      {error, Reason} ->
          ?log_error("Can't access file: ~p~n", [LogFileName]),
          {stop, Reason, State}
    end;
@@ -98,14 +102,15 @@ code_change(_OldSvn, State, _Extra) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
 %
 % extracting messages from log file
 %
 parse_logfile_line_by_line(Device, Accum, State) ->
    case io:get_line(Device, "") of
-      eof -> 
+      eof ->
          ok;
-      Line -> 
+      Line ->
          {Term, UnhandledData} = try_to_get_term(Accum ++ Line, string:chr(Line, $.)),
          reinsert_message(State, Term),
          parse_logfile_line_by_line(Device, UnhandledData, State)
@@ -115,7 +120,7 @@ parse_logfile_line_by_line(Device, Accum, State) ->
 %
 % trying to get Term from raw string
 %
-try_to_get_term(Text, 0) -> {nothing, Text};
+try_to_get_term(Text, 0) -> {undefined, Text};
 
 try_to_get_term(Text, _Position) ->
    RefinedString = remove_spaces_and_brakes(Text),
@@ -135,11 +140,11 @@ try_to_get_term(Text, _Position) ->
 % saving data into file.
 % when "" passed file should be cleansed
 %
-save_into_file(FileName, "") -> 
-   file:write_file(FileName, "", []);
+init_storage_file(FileName) ->
+   file:write_file(FileName, "", []).
 
-save_into_file(FileName, Data) -> 
-   file:write_file(FileName, io_lib:fwrite("~p\n", [Data]), [append]).
+save_into_file(FileName, Data) ->
+   file:write_file(FileName, io_lib:fwrite("~p.\n", [Data]), [append]).
 
 
 %
@@ -152,9 +157,9 @@ remove_spaces_and_brakes(Text) ->
 %
 % re-insert data in MongoDB or in file (depending it was fired or not)
 %
-reinsert_message(_State, nothing) -> ok;
+reinsert_message(_State, undefined) -> ok;
 
-reinsert_message(_State = #state{connection = Connection, db = Db, collection = Collection}, 
+reinsert_message(_State = #state{connection = Connection, db = Db, collection = Collection},
                 _Data = {task, _RecipCnt, Msisdns, TranSid, _Tag, _Error}) ->
    {ok, ok} = mongo:do(safe, master, Connection, Db, fun() ->
       lists:foreach(fun(Msisdn) ->
@@ -162,5 +167,5 @@ reinsert_message(_State = #state{connection = Connection, db = Db, collection = 
       end, Msisdns)
    end);
 
-reinsert_message(_State = #state{file_for_rejected_data = FileForRejectedData}, Data = {_Message, _UnpackedMessage}) ->  
+reinsert_message(_State = #state{file_for_rejected_data = FileForRejectedData}, Data = {_Message, _UnpackedMessage}) ->
    save_into_file(FileForRejectedData, Data).
