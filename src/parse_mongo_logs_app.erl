@@ -10,7 +10,6 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-	% application:start(mongodb),
    parse_mongo_logs_sup:start_link().
 
 stop(_State) ->
